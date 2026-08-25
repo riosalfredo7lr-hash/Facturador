@@ -558,4 +558,505 @@ function startNewOrder(clientId, distrib){
 /* ============================================================
    PANTALLA: PEDIDO (productos + carrito)
    ============================================================ */
-function renderOrderScr
+function renderOrderScreen(){
+  const clients = loadClients();
+  const client = clients.find(c=>c.id === state.currentClientId);
+  if(!client){
+    state.view = 'home';
+    render();
+    return;
+  }
+
+  setHeader(state.editingOrderId ? 'Modificar Pedido' : 'Nuevo Pedido', true, ()=>{
+    if(confirm('¿Salir del pedido? Se perderán los cambios no finalizados.')){
+      state.view = state.editingOrderId ? 'ordersList' : 'home';
+      state.editingOrderId = null;
+      render();
+    }
+  });
+
+  const html = `
+    <div class="summary-box">
+      <div class="line"><span>Cliente:</span><b>${escapeHtml(client.name)}</b></div>
+      <div class="line"><span>Dirección:</span><b>${escapeHtml(client.address || '-')}</b></div>
+      <div class="line"><span>Teléfono:</span><b>${escapeHtml(client.phone || '-')}</b></div>
+      <div class="line" style="margin-top:6px;"><span>Distribuidora:</span></div>
+      <div class="tag">${escapeHtml(state.currentDistrib)}</div>
+    </div>
+
+    <div class="search-wrap">
+      <div class="row">
+        <input type="text" id="productSearchInput" placeholder="🔎 Buscar producto..." value="${escapeHtml(state.productSearch)}">
+        <button class="btn btn-secondary" id="btnAddProduct" style="flex:0 0 auto;">➕ Producto</button>
+      </div>
+    </div>
+
+    <div id="productList"></div>
+
+    <h3 style="margin-top:22px;">Pedido actual</h3>
+    <div class="card" style="padding:8px 10px;">
+      <div id="cartTableWrap"></div>
+    </div>
+
+    <div class="total-bar">
+      <div>
+        <div class="label">TOTAL DEL PEDIDO</div>
+        <div class="amount" id="orderTotalAmount">${formatMoney(0)}</div>
+      </div>
+    </div>
+
+    <div class="row no-print">
+      <button class="btn btn-secondary btn-block" id="btnEmptyOrder">🗑️ Vaciar pedido</button>
+      <button class="btn btn-primary btn-block" id="btnFinishOrder">✅ Finalizar pedido</button>
+    </div>
+    <div class="fab-space"></div>
+  `;
+  mainContainer.innerHTML = html;
+
+  document.getElementById('btnAddProduct').addEventListener('click', ()=> openProductModal(null, state.currentDistrib));
+  document.getElementById('productSearchInput').addEventListener('input', (e)=>{
+    state.productSearch = e.target.value;
+    renderProductList();
+  });
+  document.getElementById('btnEmptyOrder').addEventListener('click', ()=>{
+    if(state.cart.length === 0) return;
+    if(confirm('¿Vaciar todo el pedido actual?')){
+      state.cart = [];
+      renderCart();
+    }
+  });
+  document.getElementById('btnFinishOrder').addEventListener('click', finishOrder);
+
+  renderProductList();
+  renderCart();
+}
+
+function renderProductList(){
+  const wrap = document.getElementById('productList');
+  if(!wrap) return;
+  const search = state.productSearch.trim().toLowerCase();
+  const products = loadProducts().filter(p => p.distrib === state.currentDistrib && p.name.toLowerCase().includes(search));
+
+  if(products.length === 0){
+    wrap.innerHTML = `<div class="empty-state">No hay productos para esta distribuidora.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = products.map(p => `
+    <div class="card product-item">
+      <div class="product-info">
+        <div class="pname">${escapeHtml(p.name)}</div>
+        <div class="pprice">${formatMoney(p.price)}</div>
+      </div>
+      <div class="product-actions">
+        <button class="btn-icon" data-edit-product="${p.id}" title="Modificar">✏️</button>
+        <button class="btn btn-primary btn-sm" data-add-product="${p.id}">Agregar</button>
+      </div>
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('[data-add-product]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      addProductToCart(btn.dataset.addProduct);
+    });
+  });
+  wrap.querySelectorAll('[data-edit-product]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const product = loadProducts().find(p=>p.id === btn.dataset.editProduct);
+      openProductModal(product, state.currentDistrib);
+    });
+  });
+}
+
+function addProductToCart(productId){
+  const product = loadProducts().find(p=>p.id === productId);
+  if(!product) return;
+  const existing = state.cart.find(item => item.productId === productId);
+  if(existing){
+    existing.qty += 1;
+  } else {
+    state.cart.push({ productId: product.id, name: product.name, price: product.price, qty: 1 });
+  }
+  renderCart();
+  showToast(`${product.name} agregado.`);
+}
+
+function renderCart(){
+  const wrap = document.getElementById('cartTableWrap');
+  const totalEl = document.getElementById('orderTotalAmount');
+  if(!wrap) return;
+
+  if(state.cart.length === 0){
+    wrap.innerHTML = `<div class="empty-state">El pedido está vacío. Agregá productos del catálogo.</div>`;
+    if(totalEl) totalEl.textContent = formatMoney(0);
+    return;
+  }
+
+  let total = 0;
+  const rows = state.cart.map((item, idx) => {
+    const subtotal = item.price * item.qty;
+    total += subtotal;
+    return `
+      <tr>
+        <td>${escapeHtml(item.name)}</td>
+        <td class="num">${formatMoney(item.price)}</td>
+        <td>
+          <div class="qty-control no-print">
+            <button data-dec="${idx}">−</button>
+            <span>${item.qty}</span>
+            <button data-inc="${idx}">+</button>
+          </div>
+          <div class="print-only" style="text-align:center;">${item.qty}</div>
+        </td>
+        <td class="num">${formatMoney(subtotal)}</td>
+        <td class="no-print"><button class="btn-icon" data-remove="${idx}" title="Eliminar">🗑️</button></td>
+      </tr>
+    `;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th class="num">P. Unit.</th>
+          <th>Cant.</th>
+          <th class="num">Subtotal</th>
+          <th class="no-print"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  wrap.querySelectorAll('[data-inc]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      state.cart[btn.dataset.inc].qty += 1;
+      renderCart();
+    });
+  });
+  wrap.querySelectorAll('[data-dec]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = btn.dataset.dec;
+      state.cart[idx].qty -= 1;
+      if(state.cart[idx].qty <= 0){
+        state.cart.splice(idx,1);
+      }
+      renderCart();
+    });
+  });
+  wrap.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      state.cart.splice(btn.dataset.remove,1);
+      renderCart();
+    });
+  });
+
+  if(totalEl) totalEl.textContent = formatMoney(total);
+}
+
+function getCartTotal(){
+  return state.cart.reduce((sum,item)=> sum + item.price * item.qty, 0);
+}
+
+/* ============================================================
+   MODAL: CARGAR / MODIFICAR PRODUCTO
+   ============================================================ */
+function openProductModal(existingProduct, defaultDistrib){
+  const isEdit = !!existingProduct;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const distribOptionsHtml = DISTRIBUIDORAS.map(d => {
+    const selected = (isEdit ? existingProduct.distrib : defaultDistrib) === d ? 'selected' : '';
+    return `<option value="${escapeHtml(d)}" ${selected}>${escapeHtml(d)}</option>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>${isEdit ? 'Modificar Producto' : 'Cargar Producto'}</h2>
+      <div class="field-group">
+        <label>Nombre <span class="required-mark">*</span></label>
+        <input type="text" id="productNameInput" value="${isEdit ? escapeHtml(existingProduct.name) : ''}" placeholder="Ej: Harina 0000 1kg">
+        <div class="error-text" id="productNameError">El nombre es obligatorio.</div>
+      </div>
+      <div class="field-group">
+        <label>Precio <span class="required-mark">*</span></label>
+        <input type="number" id="productPriceInput" min="0.01" step="0.01" value="${isEdit ? existingProduct.price : ''}" placeholder="Ej: 850">
+        <div class="error-text" id="productPriceError">El precio debe ser mayor que 0.</div>
+      </div>
+      <div class="field-group">
+        <label>Distribuidora <span class="required-mark">*</span></label>
+        <select id="productDistribInput">${distribOptionsHtml}</select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="productCancelBtn">Cancelar</button>
+        <button class="btn btn-primary" id="productSaveBtn">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) document.body.removeChild(overlay); });
+  document.getElementById('productCancelBtn').addEventListener('click', ()=> document.body.removeChild(overlay));
+
+  document.getElementById('productSaveBtn').addEventListener('click', ()=>{
+    const nameInput = document.getElementById('productNameInput');
+    const priceInput = document.getElementById('productPriceInput');
+    const distribInput = document.getElementById('productDistribInput');
+
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const distrib = distribInput.value;
+
+    let valid = true;
+    document.getElementById('productNameError').classList.remove('show');
+    document.getElementById('productPriceError').classList.remove('show');
+
+    if(!name){
+      document.getElementById('productNameError').classList.add('show');
+      valid = false;
+    }
+    if(isNaN(price) || price <= 0){
+      document.getElementById('productPriceError').classList.add('show');
+      valid = false;
+    }
+    if(!valid) return;
+
+    let products = loadProducts();
+    if(isEdit){
+      const idx = products.findIndex(p=>p.id === existingProduct.id);
+      if(idx > -1){
+        products[idx] = { ...products[idx], name, price, distrib };
+      }
+      // actualizar nombre/precio también en carrito actual si corresponde
+      state.cart.forEach(item=>{
+        if(item.productId === existingProduct.id){
+          item.name = name;
+          item.price = price;
+        }
+      });
+    } else {
+      products.push({ id: uid(), name, price, distrib });
+    }
+    saveProducts(products);
+    document.body.removeChild(overlay);
+    showToast(isEdit ? 'Producto actualizado.' : 'Producto guardado.');
+
+    if(state.view === 'orderScreen'){
+      renderProductList();
+      renderCart();
+    }
+  });
+}
+
+/* ============================================================
+   FINALIZAR / GUARDAR PEDIDO
+   ============================================================ */
+function finishOrder(){
+  if(state.cart.length === 0){
+    showToast('⚠️ El pedido está vacío. Agregá al menos un producto.');
+    return;
+  }
+
+  const clients = loadClients();
+  const client = clients.find(c=>c.id === state.currentClientId);
+  if(!client) return;
+
+  const total = getCartTotal();
+  let orders = loadOrders();
+
+  if(state.editingOrderId){
+    const idx = orders.findIndex(o=>o.id === state.editingOrderId);
+    if(idx > -1){
+      orders[idx] = {
+        ...orders[idx],
+        clientId: client.id,
+        clientName: client.name,
+        clientPhone: client.phone,
+        clientAddress: client.address,
+        distrib: state.currentDistrib,
+        items: state.cart.map(i=>({ productId:i.productId, name:i.name, price:i.price, qty:i.qty, subtotal:i.price*i.qty })),
+        total
+      };
+    }
+    saveOrders(orders);
+    showToast('Pedido guardado correctamente.');
+    state.editingOrderId = null;
+    state.cart = [];
+    state.view = 'ordersList';
+    render();
+    return;
+  }
+
+  const newOrder = {
+    id: uid(),
+    number: nextOrderNumber(),
+    date: todayISO(),
+    time: nowTimeStr(),
+    clientId: client.id,
+    clientName: client.name,
+    clientPhone: client.phone,
+    clientAddress: client.address,
+    distrib: state.currentDistrib,
+    items: state.cart.map(i=>({ productId:i.productId, name:i.name, price:i.price, qty:i.qty, subtotal:i.price*i.qty })),
+    total
+  };
+  orders.push(newOrder);
+  saveOrders(orders);
+
+  showToast('Pedido guardado correctamente.');
+  state.cart = [];
+  state.view = 'ordersList';
+  render();
+}
+
+/* ============================================================
+   PANTALLA: PEDIDOS DEL DÍA / LISTADO
+   ============================================================ */
+function renderOrdersList(){
+  setHeader('📋 Pedidos', true, ()=>{
+    state.view = 'home';
+    render();
+  });
+
+  const allOrders = loadOrders().slice().sort((a,b)=>{
+    if(a.date === b.date) return b.number - a.number;
+    return a.date < b.date ? 1 : -1;
+  });
+
+  const html = `
+    <div class="filters-row no-print">
+      <select id="filterDistrib">
+        <option value="">Todas las distribuidoras</option>
+        ${DISTRIBUIDORAS.map(d=>`<option value="${escapeHtml(d)}" ${state.ordersFilterDistrib===d?'selected':''}>${escapeHtml(d)}</option>`).join('')}
+      </select>
+      <input type="text" id="filterDate" placeholder="AAAA-MM-DD" value="${escapeHtml(state.ordersFilterDate)}">
+    </div>
+    <div class="row no-print">
+      <button class="btn btn-secondary btn-block" id="btnTodayFilter">Solo hoy</button>
+      <button class="btn btn-secondary btn-block" id="btnClearFilter">Ver todos</button>
+      <button class="btn btn-primary btn-block" id="btnPrintOrders">🖨️ Imprimir / PDF</button>
+    </div>
+    <div id="ordersStats"></div>
+    <div class="print-only print-title" id="printTitleWrap">
+      <h2 id="printTitleText">Listado de Pedidos</h2>
+    </div>
+    <div id="ordersListWrap"></div>
+  `;
+  mainContainer.innerHTML = html;
+
+  document.getElementById('filterDistrib').addEventListener('change',(e)=>{
+    state.ordersFilterDistrib = e.target.value;
+    refreshOrdersListing();
+  });
+  document.getElementById('filterDate').addEventListener('input',(e)=>{
+    state.ordersFilterDate = e.target.value.trim();
+    refreshOrdersListing();
+  });
+  document.getElementById('btnTodayFilter').addEventListener('click', ()=>{
+    state.ordersFilterDate = todayISO();
+    document.getElementById('filterDate').value = state.ordersFilterDate;
+    refreshOrdersListing();
+  });
+  document.getElementById('btnClearFilter').addEventListener('click', ()=>{
+    state.ordersFilterDate = '';
+    state.ordersFilterDistrib = '';
+    document.getElementById('filterDate').value = '';
+    document.getElementById('filterDistrib').value = '';
+    refreshOrdersListing();
+  });
+  document.getElementById('btnPrintOrders').addEventListener('click', ()=> window.print());
+
+  refreshOrdersListing();
+
+  function refreshOrdersListing(){
+    let orders = loadOrders().slice().sort((a,b)=>{
+      if(a.date === b.date) return b.number - a.number;
+      return a.date < b.date ? 1 : -1;
+    });
+    if(state.ordersFilterDistrib){
+      orders = orders.filter(o=>o.distrib === state.ordersFilterDistrib);
+    }
+    if(state.ordersFilterDate){
+      orders = orders.filter(o=>o.date === state.ordersFilterDate);
+    }
+
+    const statsWrap = document.getElementById('ordersStats');
+    const totalAmount = orders.reduce((s,o)=>s+o.total,0);
+    statsWrap.innerHTML = `
+      <div class="stats-bar">
+        <div class="stat"><div class="val">${orders.length}</div><div class="lbl">Pedidos</div></div>
+        <div class="stat"><div class="val">${formatMoney(totalAmount)}</div><div class="lbl">Monto total</div></div>
+      </div>
+    `;
+
+    const printTitleEl = document.getElementById('printTitleText');
+    if(printTitleEl){
+      let titleParts = ['Listado de Pedidos'];
+      if(state.ordersFilterDistrib) titleParts.push(state.ordersFilterDistrib);
+      if(state.ordersFilterDate) titleParts.push(formatDateAR(state.ordersFilterDate));
+      printTitleEl.textContent = titleParts.join(' — ');
+    }
+
+    const listWrap = document.getElementById('ordersListWrap');
+    if(orders.length === 0){
+      listWrap.innerHTML = `<div class="empty-state">No hay pedidos para mostrar.</div>`;
+      return;
+    }
+
+    listWrap.innerHTML = orders.map(o => `
+      <div class="card order-card">
+        <div class="order-head">
+          <div>
+            <div class="num">Pedido #${o.number}</div>
+            <div class="date">${formatDateAR(o.date)} <span class="no-print">- ${escapeHtml(o.time)}</span></div>
+          </div>
+          <div class="tag no-print" style="background:#e5e7eb;color:#111827;">${escapeHtml(o.distrib)}</div>
+        </div>
+        <div class="order-detail">
+          <div><b>${escapeHtml(o.clientName)}</b></div>
+          <div>${escapeHtml(o.clientPhone || '-')}</div>
+          <div>${escapeHtml(o.clientAddress || '-')}</div>
+          <ul>
+            ${o.items.map(it=>`<li>${escapeHtml(it.name)} x${it.qty} — ${formatMoney(it.subtotal)}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="order-total">Total: ${formatMoney(o.total)}</div>
+        <div class="order-footer no-print">
+          <button class="btn btn-secondary btn-block" data-edit-order="${o.id}">✏️ Modificar</button>
+        </div>
+      </div>
+    `).join('');
+
+    listWrap.querySelectorAll('[data-edit-order]').forEach(btn=>{
+      btn.addEventListener('click', ()=> openOrderForEdit(btn.dataset.editOrder));
+    });
+  }
+}
+
+function openOrderForEdit(orderId){
+  const order = loadOrders().find(o=>o.id === orderId);
+  if(!order) return;
+  // Asegurar que el cliente exista todavía
+  const client = loadClients().find(c=>c.id === order.clientId);
+  if(!client){
+    alert('El cliente de este pedido ya no existe.');
+    return;
+  }
+  state.currentClientId = order.clientId;
+  state.currentDistrib = order.distrib;
+  state.editingOrderId = order.id;
+  state.cart = order.items.map(it => ({ productId: it.productId, name: it.name, price: it.price, qty: it.qty }));
+  state.productSearch = '';
+  state.view = 'orderScreen';
+  render();
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+seedDataIfEmpty();
+render();
+</script>
+</body>
+</html>
