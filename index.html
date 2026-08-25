@@ -1,0 +1,147 @@
+function renderOrdersList(){
+  setHeader('📋 Pedidos', true, ()=>{
+    state.view = 'home';
+    render();
+  });
+
+  const allOrders = loadOrders().slice().sort((a,b)=>{
+    if(a.date === b.date) return b.number - a.number;
+    return a.date < b.date ? 1 : -1;
+  });
+
+  const html = `
+    <div class="filters-row no-print">
+      <select id="filterDistrib">
+        <option value="">Todas las distribuidoras</option>
+        ${DISTRIBUIDORAS.map(d=>`<option value="${escapeHtml(d)}" ${state.ordersFilterDistrib===d?'selected':''}>${escapeHtml(d)}</option>`).join('')}
+      </select>
+      <input type="text" id="filterDate" placeholder="AAAA-MM-DD" value="${escapeHtml(state.ordersFilterDate)}">
+    </div>
+    <div class="row no-print">
+      <button class="btn btn-secondary btn-block" id="btnTodayFilter">Solo hoy</button>
+      <button class="btn btn-secondary btn-block" id="btnClearFilter">Ver todos</button>
+      <button class="btn btn-primary btn-block" id="btnPrintOrders">🖨️ Imprimir / PDF</button>
+    </div>
+    <div id="ordersStats"></div>
+    <div class="print-only print-title" id="printTitleWrap">
+      <h2 id="printTitleText">Listado de Pedidos</h2>
+    </div>
+    <div id="ordersListWrap"></div>
+  `;
+  mainContainer.innerHTML = html;
+
+  document.getElementById('filterDistrib').addEventListener('change',(e)=>{
+    state.ordersFilterDistrib = e.target.value;
+    refreshOrdersListing();
+  });
+  document.getElementById('filterDate').addEventListener('input',(e)=>{
+    state.ordersFilterDate = e.target.value.trim();
+    refreshOrdersListing();
+  });
+  document.getElementById('btnTodayFilter').addEventListener('click', ()=>{
+    state.ordersFilterDate = todayISO();
+    document.getElementById('filterDate').value = state.ordersFilterDate;
+    refreshOrdersListing();
+  });
+  document.getElementById('btnClearFilter').addEventListener('click', ()=>{
+    state.ordersFilterDate = '';
+    state.ordersFilterDistrib = '';
+    document.getElementById('filterDate').value = '';
+    document.getElementById('filterDistrib').value = '';
+    refreshOrdersListing();
+  });
+  document.getElementById('btnPrintOrders').addEventListener('click', ()=> window.print());
+
+  refreshOrdersListing();
+
+  function refreshOrdersListing(){
+    let orders = loadOrders().slice().sort((a,b)=>{
+      if(a.date === b.date) return b.number - a.number;
+      return a.date < b.date ? 1 : -1;
+    });
+    if(state.ordersFilterDistrib){
+      orders = orders.filter(o=>o.distrib === state.ordersFilterDistrib);
+    }
+    if(state.ordersFilterDate){
+      orders = orders.filter(o=>o.date === state.ordersFilterDate);
+    }
+
+    const statsWrap = document.getElementById('ordersStats');
+    const totalAmount = orders.reduce((s,o)=>s+o.total,0);
+    statsWrap.innerHTML = `
+      <div class="stats-bar">
+        <div class="stat"><div class="val">${orders.length}</div><div class="lbl">Pedidos</div></div>
+        <div class="stat"><div class="val">${formatMoney(totalAmount)}</div><div class="lbl">Monto total</div></div>
+      </div>
+    `;
+
+    const printTitleEl = document.getElementById('printTitleText');
+    if(printTitleEl){
+      let titleParts = ['Listado de Pedidos'];
+      if(state.ordersFilterDistrib) titleParts.push(state.ordersFilterDistrib);
+      if(state.ordersFilterDate) titleParts.push(formatDateAR(state.ordersFilterDate));
+      printTitleEl.textContent = titleParts.join(' — ');
+    }
+
+    const listWrap = document.getElementById('ordersListWrap');
+    if(orders.length === 0){
+      listWrap.innerHTML = `<div class="empty-state">No hay pedidos para mostrar.</div>`;
+      return;
+    }
+
+    listWrap.innerHTML = orders.map(o => `
+      <div class="card order-card">
+        <div class="order-head">
+          <div>
+            <div class="num">Pedido #${o.number}</div>
+            <div class="date">${formatDateAR(o.date)} <span class="no-print">- ${escapeHtml(o.time)}</span></div>
+          </div>
+          <div class="tag no-print" style="background:#e5e7eb;color:#111827;">${escapeHtml(o.distrib)}</div>
+        </div>
+        <div class="order-detail">
+          <div><b>${escapeHtml(o.clientName)}</b></div>
+          <div>${escapeHtml(o.clientPhone || '-')}</div>
+          <div>${escapeHtml(o.clientAddress || '-')}</div>
+          <ul>
+            ${o.items.map(it=>`<li>${escapeHtml(it.name)} x${it.qty} — ${formatMoney(it.subtotal)}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="order-total">Total: ${formatMoney(o.total)}</div>
+        <div class="order-footer no-print">
+          <button class="btn btn-secondary btn-block" data-edit-order="${o.id}">✏️ Modificar</button>
+        </div>
+      </div>
+    `).join('');
+
+    listWrap.querySelectorAll('[data-edit-order]').forEach(btn=>{
+      btn.addEventListener('click', ()=> openOrderForEdit(btn.dataset.editOrder));
+    });
+  }
+}
+
+function openOrderForEdit(orderId){
+  const order = loadOrders().find(o=>o.id === orderId);
+  if(!order) return;
+  // Asegurar que el cliente exista todavía
+  const client = loadClients().find(c=>c.id === order.clientId);
+  if(!client){
+    alert('El cliente de este pedido ya no existe.');
+    return;
+  }
+  state.currentClientId = order.clientId;
+  state.currentDistrib = order.distrib;
+  state.editingOrderId = order.id;
+  state.cart = order.items.map(it => ({ productId: it.productId, name: it.name, price: it.price, qty: it.qty }));
+  state.productSearch = '';
+  state.view = 'orderScreen';
+  render();
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+seedDataIfEmpty();
+render();
+</script>
+</body>
+</html>
