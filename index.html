@@ -1,147 +1,561 @@
-function renderOrdersList(){
-  setHeader('📋 Pedidos', true, ()=>{
-    state.view = 'home';
-    render();
-  });
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Sistema Facturador</title>
+<style>
+  :root{
+    --bg:#f2f4f7;
+    --card:#ffffff;
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --danger:#dc2626;
+    --danger-dark:#b91c1c;
+    --success:#16a34a;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding-bottom:40px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  header.appbar{
+    background:var(--primary);
+    color:#fff;
+    padding:16px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    position:sticky;
+    top:0;
+    z-index:50;
+    box-shadow:0 2px 8px rgba(0,0,0,.12);
+  }
+  header.appbar h1{font-size:1.15rem;margin:0;font-weight:700;}
+  header.appbar .back-btn{
+    background:rgba(255,255,255,.18);
+    border:none;color:#fff;padding:8px 12px;border-radius:10px;
+    font-size:.95rem;cursor:pointer;
+  }
+  .container{max-width:720px;margin:0 auto;padding:16px;}
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    margin-bottom:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    border:1px solid var(--border);
+  }
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    border:none;border-radius:12px;
+    padding:12px 16px;
+    font-size:1rem;font-weight:600;
+    cursor:pointer;
+    transition:background .15s, transform .05s;
+    -webkit-user-select:none;user-select:none;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--primary);color:#fff;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-secondary{background:#e5e7eb;color:var(--text);}
+  .btn-secondary:hover{background:#d1d5db;}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-danger:hover{background:var(--danger-dark);}
+  .btn-success{background:var(--success);color:#fff;}
+  .btn-block{width:100%;}
+  .btn-sm{padding:8px 10px;font-size:.85rem;border-radius:10px;}
+  .btn-icon{background:transparent;border:none;font-size:1.1rem;cursor:pointer;padding:6px 8px;border-radius:8px;}
+  .btn-icon:hover{background:#f0f1f3;}
 
-  const allOrders = loadOrders().slice().sort((a,b)=>{
-    if(a.date === b.date) return b.number - a.number;
-    return a.date < b.date ? 1 : -1;
-  });
+  input[type=text], input[type=tel], input[type=number], select{
+    width:100%;
+    padding:12px 12px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    font-size:1rem;
+    background:#fff;
+    color:var(--text);
+    margin-top:4px;
+  }
+  input:focus, select:focus{outline:2px solid var(--primary);outline-offset:0;}
+  label{font-size:.82rem;color:var(--muted);font-weight:600;display:block;margin-top:10px;}
+  .field-group{margin-bottom:4px;}
 
-  const html = `
-    <div class="filters-row no-print">
-      <select id="filterDistrib">
-        <option value="">Todas las distribuidoras</option>
-        ${DISTRIBUIDORAS.map(d=>`<option value="${escapeHtml(d)}" ${state.ordersFilterDistrib===d?'selected':''}>${escapeHtml(d)}</option>`).join('')}
-      </select>
-      <input type="text" id="filterDate" placeholder="AAAA-MM-DD" value="${escapeHtml(state.ordersFilterDate)}">
-    </div>
-    <div class="row no-print">
-      <button class="btn btn-secondary btn-block" id="btnTodayFilter">Solo hoy</button>
-      <button class="btn btn-secondary btn-block" id="btnClearFilter">Ver todos</button>
-      <button class="btn btn-primary btn-block" id="btnPrintOrders">🖨️ Imprimir / PDF</button>
-    </div>
-    <div id="ordersStats"></div>
-    <div class="print-only print-title" id="printTitleWrap">
-      <h2 id="printTitleText">Listado de Pedidos</h2>
-    </div>
-    <div id="ordersListWrap"></div>
-  `;
-  mainContainer.innerHTML = html;
+  .row{display:flex;gap:10px;}
+  .row > *{flex:1;}
 
-  document.getElementById('filterDistrib').addEventListener('change',(e)=>{
-    state.ordersFilterDistrib = e.target.value;
-    refreshOrdersListing();
-  });
-  document.getElementById('filterDate').addEventListener('input',(e)=>{
-    state.ordersFilterDate = e.target.value.trim();
-    refreshOrdersListing();
-  });
-  document.getElementById('btnTodayFilter').addEventListener('click', ()=>{
-    state.ordersFilterDate = todayISO();
-    document.getElementById('filterDate').value = state.ordersFilterDate;
-    refreshOrdersListing();
-  });
-  document.getElementById('btnClearFilter').addEventListener('click', ()=>{
-    state.ordersFilterDate = '';
-    state.ordersFilterDistrib = '';
-    document.getElementById('filterDate').value = '';
-    document.getElementById('filterDistrib').value = '';
-    refreshOrdersListing();
-  });
-  document.getElementById('btnPrintOrders').addEventListener('click', ()=> window.print());
+  .top-actions{display:flex;gap:10px;margin-bottom:14px;}
+  .search-wrap{margin-bottom:14px;}
 
-  refreshOrdersListing();
+  .client-item{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+  }
+  .client-info{flex:1;min-width:0;}
+  .client-info .name{font-weight:700;font-size:1.02rem;}
+  .client-info .meta{color:var(--muted);font-size:.85rem;margin-top:2px;word-break:break-word;}
+  .client-actions{display:flex;flex-direction:column;gap:6px;}
+  .client-actions .btn{white-space:nowrap;}
 
-  function refreshOrdersListing(){
-    let orders = loadOrders().slice().sort((a,b)=>{
-      if(a.date === b.date) return b.number - a.number;
-      return a.date < b.date ? 1 : -1;
-    });
-    if(state.ordersFilterDistrib){
-      orders = orders.filter(o=>o.distrib === state.ordersFilterDistrib);
-    }
-    if(state.ordersFilterDate){
-      orders = orders.filter(o=>o.date === state.ordersFilterDate);
-    }
+  .empty-state{text-align:center;color:var(--muted);padding:40px 10px;}
 
-    const statsWrap = document.getElementById('ordersStats');
-    const totalAmount = orders.reduce((s,o)=>s+o.total,0);
-    statsWrap.innerHTML = `
-      <div class="stats-bar">
-        <div class="stat"><div class="val">${orders.length}</div><div class="lbl">Pedidos</div></div>
-        <div class="stat"><div class="val">${formatMoney(totalAmount)}</div><div class="lbl">Monto total</div></div>
-      </div>
-    `;
+  /* Modal */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(17,24,39,.5);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:100;
+  }
+  .modal-overlay.center{align-items:center;}
+  .modal{
+    background:#fff;width:100%;max-width:520px;
+    border-radius:18px 18px 0 0;
+    padding:20px;
+    max-height:90vh;overflow-y:auto;
+    animation:slideUp .18s ease-out;
+  }
+  .modal-overlay.center .modal{border-radius:18px;}
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  .modal h2{margin:0 0 4px 0;font-size:1.15rem;}
+  .modal-sub{color:var(--muted);font-size:.85rem;margin-bottom:6px;}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .modal-actions .btn{flex:1;}
 
-    const printTitleEl = document.getElementById('printTitleText');
-    if(printTitleEl){
-      let titleParts = ['Listado de Pedidos'];
-      if(state.ordersFilterDistrib) titleParts.push(state.ordersFilterDistrib);
-      if(state.ordersFilterDate) titleParts.push(formatDateAR(state.ordersFilterDate));
-      printTitleEl.textContent = titleParts.join(' — ');
-    }
+  .distrib-option{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px;border:2px solid var(--border);border-radius:14px;
+    margin-bottom:12px;cursor:pointer;font-weight:700;font-size:1.05rem;
+  }
+  .distrib-option:hover{border-color:var(--primary);background:#eff4ff;}
 
-    const listWrap = document.getElementById('ordersListWrap');
-    if(orders.length === 0){
-      listWrap.innerHTML = `<div class="empty-state">No hay pedidos para mostrar.</div>`;
-      return;
-    }
+  .summary-box{
+    background:#eff4ff;border:1px solid #c7d9fb;border-radius:12px;padding:12px 14px;margin-bottom:14px;
+  }
+  .summary-box .line{display:flex;justify-content:space-between;font-size:.9rem;padding:2px 0;}
+  .summary-box .line b{font-weight:700;}
+  .summary-box .tag{
+    display:inline-block;background:var(--primary);color:#fff;font-size:.75rem;
+    padding:2px 8px;border-radius:20px;margin-top:4px;
+  }
 
-    listWrap.innerHTML = orders.map(o => `
-      <div class="card order-card">
-        <div class="order-head">
-          <div>
-            <div class="num">Pedido #${o.number}</div>
-            <div class="date">${formatDateAR(o.date)} <span class="no-print">- ${escapeHtml(o.time)}</span></div>
-          </div>
-          <div class="tag no-print" style="background:#e5e7eb;color:#111827;">${escapeHtml(o.distrib)}</div>
-        </div>
-        <div class="order-detail">
-          <div><b>${escapeHtml(o.clientName)}</b></div>
-          <div>${escapeHtml(o.clientPhone || '-')}</div>
-          <div>${escapeHtml(o.clientAddress || '-')}</div>
-          <ul>
-            ${o.items.map(it=>`<li>${escapeHtml(it.name)} x${it.qty} — ${formatMoney(it.subtotal)}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="order-total">Total: ${formatMoney(o.total)}</div>
-        <div class="order-footer no-print">
-          <button class="btn btn-secondary btn-block" data-edit-order="${o.id}">✏️ Modificar</button>
-        </div>
-      </div>
-    `).join('');
+  .product-item{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .product-info{flex:1;min-width:0;}
+  .product-info .pname{font-weight:600;}
+  .product-info .pprice{color:var(--muted);font-size:.9rem;}
+  .product-actions{display:flex;align-items:center;gap:6px;}
 
-    listWrap.querySelectorAll('[data-edit-order]').forEach(btn=>{
-      btn.addEventListener('click', ()=> openOrderForEdit(btn.dataset.editOrder));
-    });
+  table{width:100%;border-collapse:collapse;font-size:.88rem;}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;}
+  td.num{text-align:right;white-space:nowrap;}
+  .qty-control{display:flex;align-items:center;gap:6px;justify-content:center;}
+  .qty-control button{
+    width:28px;height:28px;border-radius:8px;border:1px solid var(--border);
+    background:#f9fafb;font-weight:700;cursor:pointer;font-size:1rem;
+  }
+  .qty-control span{min-width:20px;text-align:center;font-weight:600;}
+
+  .total-bar{
+    display:flex;justify-content:space-between;align-items:center;
+    background:#111827;color:#fff;border-radius:14px;padding:16px 18px;margin:16px 0;
+  }
+  .total-bar .label{font-size:.9rem;opacity:.8;}
+  .total-bar .amount{font-size:1.6rem;font-weight:800;}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:#111827;color:#fff;padding:12px 20px;border-radius:12px;
+    font-size:.92rem;z-index:200;box-shadow:0 4px 14px rgba(0,0,0,.25);
+    opacity:0;transition:opacity .25s, bottom .25s;pointer-events:none;
+  }
+  .toast.show{opacity:1;bottom:36px;}
+
+  .filters-row{display:flex;gap:10px;margin-bottom:14px;}
+  .order-card{margin-bottom:12px;}
+  .order-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .order-head .num{font-weight:800;color:var(--primary);}
+  .order-head .date{color:var(--muted);font-size:.82rem;}
+  .order-detail{margin-top:8px;font-size:.85rem;color:var(--text);}
+  .order-detail ul{margin:6px 0;padding-left:18px;}
+  .order-total{font-weight:800;font-size:1.05rem;margin-top:8px;}
+  .order-footer{display:flex;gap:8px;margin-top:10px;}
+
+  .stats-bar{display:flex;gap:10px;margin:14px 0;}
+  .stats-bar .stat{flex:1;background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;}
+  .stats-bar .stat .val{font-size:1.25rem;font-weight:800;color:var(--primary);}
+  .stats-bar .stat .lbl{font-size:.75rem;color:var(--muted);}
+
+  .required-mark{color:var(--danger);}
+  .error-text{color:var(--danger);font-size:.8rem;margin-top:4px;display:none;}
+  .error-text.show{display:block;}
+
+  .fab-space{height:10px;}
+
+  @media print{
+    header.appbar, .no-print, .modal-overlay{display:none !important;}
+    body{background:#fff;padding:0;}
+    .container{max-width:100%;padding:0;}
+    .card{box-shadow:none;border:1px solid #ccc;}
+    .print-only{display:block !important;}
+  }
+  .print-only{display:none;}
+  .print-title{text-align:center;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <button class="back-btn no-print" id="backBtn" style="visibility:hidden;">← Volver</button>
+  <h1 id="pageTitle">Sistema Facturador</h1>
+  <button class="btn-icon no-print" id="ordersShortcutBtn" title="Pedidos">📋</button>
+</header>
+
+<div class="container" id="mainContainer"></div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================================================
+   ESTADO / STORAGE
+   ============================================================ */
+const LS_KEYS = {
+  clients: 'fact_clients',
+  products: 'fact_products',
+  orders: 'fact_orders',
+  counter: 'fact_order_counter'
+};
+
+let state = {
+  view: 'home', // home | orderClient (distrib select) | orderScreen | ordersList
+  currentClientId: null,
+  currentDistrib: null,
+  editingOrderId: null, // if modifying an existing order
+  cart: [], // {productId, name, price, qty}
+  clientSearch: '',
+  productSearch: '',
+  ordersFilterDistrib: '',
+  ordersFilterDate: ''
+};
+
+function loadClients(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEYS.clients)) || []; }catch(e){ return []; }
+}
+function saveClients(list){ localStorage.setItem(LS_KEYS.clients, JSON.stringify(list)); }
+
+function loadProducts(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEYS.products)) || []; }catch(e){ return []; }
+}
+function saveProducts(list){ localStorage.setItem(LS_KEYS.products, JSON.stringify(list)); }
+
+function loadOrders(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEYS.orders)) || []; }catch(e){ return []; }
+}
+function saveOrders(list){ localStorage.setItem(LS_KEYS.orders, JSON.stringify(list)); }
+
+function nextOrderNumber(){
+  let n = parseInt(localStorage.getItem(LS_KEYS.counter) || '0', 10);
+  n += 1;
+  localStorage.setItem(LS_KEYS.counter, String(n));
+  return n;
+}
+
+function uid(){
+  return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+}
+
+/* ============================================================
+   DATOS DE EJEMPLO (solo si localStorage vacío)
+   ============================================================ */
+function seedDataIfEmpty(){
+  let clients = loadClients();
+  if(clients.length === 0){
+    clients = [
+      { id: uid(), name: 'Comercial Los Ceibos', address: 'Av. San Martín 123', phone: '3804123456' },
+      { id: uid(), name: 'Almacén Don Pedro', address: 'Calle Belgrano 456', phone: '3804987654' }
+    ];
+    saveClients(clients);
+  }
+  let products = loadProducts();
+  if(products.length === 0){
+    products = [
+      { id: uid(), name: 'Harina 0000 1kg', price: 850, distrib: 'Luis Corzo' },
+      { id: uid(), name: 'Aceite Girasol 1.5L', price: 2100, distrib: 'Luis Corzo' },
+      { id: uid(), name: 'Gaseosa Cola 2.25L', price: 1800, distrib: 'Carlos Pesara' },
+      { id: uid(), name: 'Agua Mineral 500ml', price: 600, distrib: 'Carlos Pesara' }
+    ];
+    saveProducts(products);
   }
 }
 
-function openOrderForEdit(orderId){
-  const order = loadOrders().find(o=>o.id === orderId);
-  if(!order) return;
-  // Asegurar que el cliente exista todavía
-  const client = loadClients().find(c=>c.id === order.clientId);
-  if(!client){
-    alert('El cliente de este pedido ya no existe.');
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+function formatMoney(n){
+  n = Number(n) || 0;
+  return '$' + n.toLocaleString('es-AR', {minimumFractionDigits:0, maximumFractionDigits:2});
+}
+
+function formatDateAR(dateStr){
+  // dateStr = YYYY-MM-DD
+  const [y,m,d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function todayISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function nowTimeStr(){
+  const d = new Date();
+  return d.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+}
+
+let toastTimer = null;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.classList.remove('show'); }, 2400);
+}
+
+/* ============================================================
+   RENDER PRINCIPAL / ROUTER
+   ============================================================ */
+const mainContainer = document.getElementById('mainContainer');
+const pageTitle = document.getElementById('pageTitle');
+const backBtn = document.getElementById('backBtn');
+
+function setHeader(title, showBack, onBack){
+  pageTitle.textContent = title;
+  if(showBack){
+    backBtn.style.visibility = 'visible';
+    backBtn.onclick = onBack;
+  } else {
+    backBtn.style.visibility = 'hidden';
+    backBtn.onclick = null;
+  }
+}
+
+function render(){
+  mainContainer.innerHTML = '';
+  if(state.view === 'home'){
+    renderHome();
+  } else if(state.view === 'orderScreen'){
+    renderOrderScreen();
+  } else if(state.view === 'ordersList'){
+    renderOrdersList();
+  }
+}
+
+document.getElementById('ordersShortcutBtn').addEventListener('click', ()=>{
+  state.view = 'ordersList';
+  render();
+});
+
+/* ============================================================
+   PANTALLA 1: INICIO (lista de clientes)
+   ============================================================ */
+function renderHome(){
+  setHeader('Sistema Facturador', false, null);
+  const clients = loadClients();
+  const search = state.clientSearch.trim().toLowerCase();
+  const filtered = clients.filter(c => c.name.toLowerCase().includes(search));
+
+  let html = `
+    <div class="top-actions">
+      <button class="btn btn-primary btn-block" id="btnAddClient">➕ Cargar Cliente</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="clientSearchInput" placeholder="🔎 Buscar cliente..." value="${escapeHtml(state.clientSearch)}">
+    </div>
+    <div id="clientList"></div>
+  `;
+  mainContainer.innerHTML = html;
+
+  document.getElementById('btnAddClient').addEventListener('click', ()=> openClientModal(null));
+  const searchInput = document.getElementById('clientSearchInput');
+  searchInput.addEventListener('input', (e)=>{
+    state.clientSearch = e.target.value;
+    renderClientList(filteredClients());
+  });
+
+  function filteredClients(){
+    const s = state.clientSearch.trim().toLowerCase();
+    return loadClients().filter(c => c.name.toLowerCase().includes(s));
+  }
+
+  renderClientList(filtered);
+}
+
+function renderClientList(list){
+  const wrap = document.getElementById('clientList');
+  if(!wrap) return;
+  if(list.length === 0){
+    wrap.innerHTML = `<div class="empty-state">No hay clientes para mostrar.</div>`;
     return;
   }
-  state.currentClientId = order.clientId;
-  state.currentDistrib = order.distrib;
-  state.editingOrderId = order.id;
-  state.cart = order.items.map(it => ({ productId: it.productId, name: it.name, price: it.price, qty: it.qty }));
+  wrap.innerHTML = list.map(c => `
+    <div class="card client-item">
+      <div class="client-info">
+        <div class="name">${escapeHtml(c.name)}</div>
+        <div class="meta">${escapeHtml(c.address || '(sin dirección)')}</div>
+        <div class="meta">${escapeHtml(c.phone || '(sin teléfono)')}</div>
+      </div>
+      <div class="client-actions">
+        <button class="btn btn-secondary btn-sm" data-edit="${c.id}">✏️ Modificar</button>
+        <button class="btn btn-primary btn-sm" data-order="${c.id}">🛒 Cargar Pedido</button>
+      </div>
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const client = loadClients().find(c=>c.id === btn.dataset.edit);
+      openClientModal(client);
+    });
+  });
+  wrap.querySelectorAll('[data-order]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      openDistribModal(btn.dataset.order);
+    });
+  });
+}
+
+/* ============================================================
+   MODAL: CARGAR / MODIFICAR CLIENTE
+   ============================================================ */
+function openClientModal(existingClient){
+  const isEdit = !!existingClient;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>${isEdit ? 'Modificar Cliente' : 'Cargar Cliente'}</h2>
+      <div class="field-group">
+        <label>Nombre completo <span class="required-mark">*</span></label>
+        <input type="text" id="clientNameInput" value="${isEdit ? escapeHtml(existingClient.name) : ''}" placeholder="Ej: Comercial Los Ceibos">
+        <div class="error-text" id="clientNameError">El nombre es obligatorio.</div>
+      </div>
+      <div class="field-group">
+        <label>Dirección</label>
+        <input type="text" id="clientAddressInput" value="${isEdit ? escapeHtml(existingClient.address) : ''}" placeholder="Ej: Av. San Martín 123">
+      </div>
+      <div class="field-group">
+        <label>Teléfono</label>
+        <input type="tel" id="clientPhoneInput" value="${isEdit ? escapeHtml(existingClient.phone) : ''}" placeholder="Ej: 3804123456">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="clientCancelBtn">Cancelar</button>
+        <button class="btn btn-primary" id="clientSaveBtn">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) document.body.removeChild(overlay); });
+  document.getElementById('clientCancelBtn').addEventListener('click', ()=> document.body.removeChild(overlay));
+
+  document.getElementById('clientSaveBtn').addEventListener('click', ()=>{
+    const nameInput = document.getElementById('clientNameInput');
+    const name = nameInput.value.trim();
+    const address = document.getElementById('clientAddressInput').value.trim();
+    const phone = document.getElementById('clientPhoneInput').value.trim();
+
+    if(!name){
+      document.getElementById('clientNameError').classList.add('show');
+      nameInput.focus();
+      return;
+    }
+
+    let clients = loadClients();
+    if(isEdit){
+      const idx = clients.findIndex(c=>c.id === existingClient.id);
+      if(idx > -1){
+        clients[idx] = { ...clients[idx], name, address, phone };
+      }
+    } else {
+      clients.push({ id: uid(), name, address, phone });
+    }
+    saveClients(clients);
+    document.body.removeChild(overlay);
+    showToast(isEdit ? 'Cliente actualizado.' : 'Cliente guardado.');
+    render();
+  });
+}
+
+/* ============================================================
+   MODAL: SELECCIONAR DISTRIBUIDORA
+   ============================================================ */
+const DISTRIBUIDORAS = ['Carlos Pesara'];
+
+function openDistribModal(clientId){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay center';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Seleccionar distribuidora</h2>
+      <div class="modal-sub">Elegí la distribuidora para este pedido</div>
+      <div id="distribOptions"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-block" id="distribCancelBtn">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const optsWrap = overlay.querySelector('#distribOptions');
+  optsWrap.innerHTML = DISTRIBUIDORAS.map(d => `
+    <div class="distrib-option" data-distrib="${escapeHtml(d)}">
+      <span>${escapeHtml(d)}</span>
+      <span>→</span>
+    </div>
+  `).join('');
+
+  optsWrap.querySelectorAll('[data-distrib]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const distrib = el.dataset.distrib;
+      document.body.removeChild(overlay);
+      startNewOrder(clientId, distrib);
+    });
+  });
+
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) document.body.removeChild(overlay); });
+  document.getElementById('distribCancelBtn').addEventListener('click', ()=> document.body.removeChild(overlay));
+}
+
+function startNewOrder(clientId, distrib){
+  state.currentClientId = clientId;
+  state.currentDistrib = distrib;
+  state.editingOrderId = null;
+  state.cart = [];
   state.productSearch = '';
   state.view = 'orderScreen';
   render();
 }
 
 /* ============================================================
-   INIT
+   PANTALLA: PEDIDO (productos + carrito)
    ============================================================ */
-seedDataIfEmpty();
-render();
-</script>
-</body>
-</html>
+function renderOrderScr
