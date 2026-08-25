@@ -508,7 +508,7 @@ function openClientModal(existingClient){
 /* ============================================================
    MODAL: SELECCIONAR DISTRIBUIDORA
    ============================================================ */
-const DISTRIBUIDORAS = ['Carlos Pesara'];
+const DISTRIBUIDORAS = ['Luis Corzo', 'Carlos Pesara'];
 
 function openDistribModal(clientId){
   const overlay = document.createElement('div');
@@ -938,8 +938,8 @@ function renderOrdersList(){
       <button class="btn btn-primary btn-block" id="btnPrintOrders">🖨️ Imprimir / PDF</button>
     </div>
     <div id="ordersStats"></div>
-    <div class="print-only print-title" id="printTitleWrap">
-      <h2 id="printTitleText">Listado de Pedidos</h2>
+    <div class="print-only print-title">
+      <h2>Listado de Pedidos</h2>
     </div>
     <div id="ordersListWrap"></div>
   `;
@@ -989,14 +989,6 @@ function renderOrdersList(){
         <div class="stat"><div class="val">${formatMoney(totalAmount)}</div><div class="lbl">Monto total</div></div>
       </div>
     `;
-
-    const printTitleEl = document.getElementById('printTitleText');
-    if(printTitleEl){
-      let titleParts = ['Listado de Pedidos'];
-      if(state.ordersFilterDistrib) titleParts.push(state.ordersFilterDistrib);
-      if(state.ordersFilterDate) titleParts.push(formatDateAR(state.ordersFilterDate));
-      printTitleEl.textContent = titleParts.join(' — ');
-    }
 
     const listWrap = document.getElementById('ordersListWrap');
     if(orders.length === 0){
